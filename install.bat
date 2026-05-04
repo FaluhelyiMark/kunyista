@@ -4,17 +4,11 @@ title Kunyista Telepito
 
 :: ============================================================
 ::  KUNYISTA TELEPITO
-::  - Python letoltese es telepitese (ha nem talalhato)
-::  - kunyista.py letoltese GitHub-rol
-::  - Asztali parancsikon letrehozasa
 :: ============================================================
-
-:: --- CONFIG ---------------------------------------------------
-set "PYTHON_FILE=kunyista.py"
 set "APP_NAME=Kunyista"
 set "INSTALL_DIR=%LOCALAPPDATA%\Kunyista"
 set "RAW_URL=https://raw.githubusercontent.com/FaluhelyiMark/kunyista/main/kunyista.py"
-:: ------------------------------------------------------------
+set "ICO_URL=https://raw.githubusercontent.com/FaluhelyiMark/kunyista/main/kunyista.ico"
 
 echo.
 echo  ==========================================
@@ -22,121 +16,134 @@ echo    KUNYISTA TELEPITO
 echo  ==========================================
 echo.
 
-:: ── 1. Python ellenorzese ────────────────────────────────────
+:: 1. Python keresese
 echo [1/4] Python ellenorzese...
-python --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo  [!] Python nem talalhato. Letoltes folyamatban...
-
-    :: winget-tel probalkozunk eloszor (Win 10/11)
-    winget --version >nul 2>&1
-    if %errorlevel% == 0 (
-        echo  [i] winget talalhato, Python telepitese...
-        winget install -e --id Python.Python.3.12 --silent --accept-package-agreements --accept-source-agreements
-        if %errorlevel% neq 0 (
-            echo  [!] winget telepites nem sikerult, kezi letoltes indul...
-            goto :manual_python
-        )
-    ) else (
-        goto :manual_python
+set "PY="
+for /f "tokens=*" %%i in ('where python 2^>nul') do (
+    echo %%i | findstr /i "WindowsApps" >nul
+    if errorlevel 1 if not defined PY set "PY=%%i"
+)
+if not defined PY (
+    for /d %%d in ("%LOCALAPPDATA%\Programs\Python\Python*") do (
+        if exist "%%d\python.exe" set "PY=%%d\python.exe"
     )
-
-    :: PATH frissitese
-    set "PATH=%LOCALAPPDATA%\Programs\Python\Python312;%LOCALAPPDATA%\Programs\Python\Python312\Scripts;%PATH%"
-    python --version >nul 2>&1
-    if %errorlevel% neq 0 (
-        echo  [!] Python telepitese utan sem talalhato. Indits ujra egy uj parancssori ablakot!
-        pause
-        exit /b 1
-    )
-    echo  [OK] Python sikeresen telepitve.
-    goto :check_pip
 )
-
-:manual_python
-echo  [i] Kezileg tolti le a Python telepitot...
-set "PY_INSTALLER=%TEMP%\python_installer.exe"
-curl -L -o "%PY_INSTALLER%" "https://www.python.org/ftp/python/3.12.4/python-3.12.4-amd64.exe"
-if %errorlevel% neq 0 (
-    echo  [HIBA] Nem sikerult letolteni a Python telepitot.
-    echo  Kerlek kezi telepitsd: https://www.python.org/downloads/
-    pause
-    exit /b 1
+if not defined PY (
+    echo  [!] Python nem talalhato, telepites folyamatban...
+    set "PY_INSTALLER=%TEMP%\python_installer.exe"
+    curl -L -o "%PY_INSTALLER%" "https://www.python.org/ftp/python/3.12.4/python-3.12.4-amd64.exe"
+    "%PY_INSTALLER%" /quiet InstallAllUsers=0 PrependPath=1 Include_test=0
+    del "%PY_INSTALLER%"
+    set "PY=%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
 )
-echo  [i] Python telepitese... (ez eltarthat nehany percig)
-"%PY_INSTALLER%" /quiet InstallAllUsers=0 PrependPath=1 Include_test=0
-del "%PY_INSTALLER%"
-set "PATH=%LOCALAPPDATA%\Programs\Python\Python312;%LOCALAPPDATA%\Programs\Python\Python312\Scripts;%PATH%"
+echo  [OK] Python: %PY%
 
-:check_pip
-python --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo  [HIBA] Python meg mindig nem talalhato. Telepisd kezi: https://www.python.org/
-    pause
-    exit /b 1
-)
-echo  [OK] Python rendben.
-
-:: ── 2. Telepitesi mappa letrehozasa ─────────────────────────
+:: 2. Mappa + kunyista.py letoltese
 echo.
-echo [2/4] Telepitesi mappa elokeszitese...
+echo [2/4] Fajlok letoltese...
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
-echo  [OK] Mappa: %INSTALL_DIR%
-
-:: ── 3. Python fajl letoltese GitHub-rol ─────────────────────
-echo.
-echo [3/4] %PYTHON_FILE% letoltese GitHub-rol...
-set "DEST_FILE=%INSTALL_DIR%\%PYTHON_FILE%"
-
-curl -L -o "%DEST_FILE%" "%RAW_URL%"
+set "PY_FILE=%INSTALL_DIR%\kunyista.py"
+set "ICO_FILE=%INSTALL_DIR%\kunyista.ico"
+curl -L -o "%PY_FILE%" "%RAW_URL%"
 if %errorlevel% neq 0 (
-    echo  [HIBA] Nem sikerult letolteni: %RAW_URL%
-    echo  Ellenorizd hogy a repo publikus-e: https://github.com/FaluhelyiMark/kunyista
+    echo  [HIBA] Nem sikerult letolteni!
     pause
     exit /b 1
 )
-echo  [OK] Letoltve: %DEST_FILE%
+curl -L -o "%ICO_FILE%" "%ICO_URL%" >nul 2>&1
+echo  [OK] Fajlok letoltve.
 
-:: ── 4. Asztali parancsikon letrehozasa ──────────────────────
+:: 3. PyInstaller -> Kunyista.exe
 echo.
-echo [4/4] Asztali parancsikon letrehozasa...
-
-:: Python eleresi ut lekerdezese
-for /f "tokens=*" %%i in ('where python') do set "PYTHON_PATH=%%i"
-
-:: .bat launcher letrehozasa az alkalmazas mellé (ikonhoz kell)
-set "LAUNCHER=%INSTALL_DIR%\start_kunyista.bat"
+echo [3/4] Kunyista.exe elkeszitese... (ez 1-2 percig tarthat)
+"%PY%" -m pip install pyinstaller --quiet 2>nul
+set "EXE_FILE=%INSTALL_DIR%\Kunyista.exe"
+set "BUILD_DIR=%TEMP%\kunyista_build"
+:: Verzioinfo fajl letrehozasa (gyarto, nev az UAC ablakban)
+set "VERFILE=%TEMP%\kunyista_ver.txt"
 (
-    echo @echo off
-    echo cd /d "%INSTALL_DIR%"
-    echo start "" "%PYTHON_PATH%" "%DEST_FILE%"
-) > "%LAUNCHER%"
+    echo VSVersionInfo(
+    echo   ffi=FixedFileInfo(
+    echo     filevers=^(1,0,0,0^),
+    echo     prodvers=^(1,0,0,0^),
+    echo     mask=0x3f,
+    echo     flags=0x0,
+    echo     OS=0x40004,
+    echo     fileType=0x1,
+    echo     subtype=0x0,
+    echo     date=^(0, 0^)
+    echo   ^),
+    echo   kids=[
+    echo     StringFileInfo(
+    echo       [
+    echo         StringTable(
+    echo           u'040904B0',
+    echo           [StringStruct^(u'CompanyName', u'Mark Faluhelyi'^),
+    echo            StringStruct^(u'FileDescription', u'Kunyista - Windows Optimalizalo'^),
+    echo            StringStruct^(u'FileVersion', u'1.0.0'^),
+    echo            StringStruct^(u'InternalName', u'Kunyista'^),
+    echo            StringStruct^(u'LegalCopyright', u'Mark Faluhelyi'^),
+    echo            StringStruct^(u'OriginalFilename', u'Kunyista.exe'^),
+    echo            StringStruct^(u'ProductName', u'Kunyista'^),
+    echo            StringStruct^(u'ProductVersion', u'1.0.0'^)]
+    echo         ^)
+    echo       ]
+    echo     ^),
+    echo     VarFileInfo^([VarStruct^(u'Translation', [1033, 1200]^)]^)
+    echo   ]
+    echo ^)
+) > "%VERFILE%"
 
-:: PowerShell segitsegevel hozuk letre a .lnk parancsikont
+"%PY%" -m PyInstaller --noconfirm --onefile --windowed --uac-admin --name "Kunyista" --icon "%ICO_FILE%" --version-file "%VERFILE%" --distpath "%INSTALL_DIR%" --workpath "%BUILD_DIR%" --specpath "%BUILD_DIR%" "%PY_FILE%" >nul 2>&1
+del "%VERFILE%"
+if exist "%EXE_FILE%" (
+    echo  [OK] Kunyista.exe elkeszult.
+    if exist "%BUILD_DIR%" rmdir /s /q "%BUILD_DIR%"
+) else (
+    echo  [!] EXE keszites nem sikerult, Python-nal folytatja...
+)
+
+:: 4. Asztali parancsikon
+echo.
+echo [4/4] Parancsikon letrehozasa...
 set "SHORTCUT=%USERPROFILE%\Desktop\%APP_NAME%.lnk"
-powershell -NoProfile -Command ^
-    "$ws = New-Object -ComObject WScript.Shell; ^
-     $sc = $ws.CreateShortcut('%SHORTCUT%'); ^
-     $sc.TargetPath = '%PYTHON_PATH%'; ^
-     $sc.Arguments = '\"'+'%DEST_FILE%'+'\"'; ^
-     $sc.WorkingDirectory = '%INSTALL_DIR%'; ^
-     $sc.Description = '%APP_NAME% - Windows Optimalizalo'; ^
-     $sc.Save()"
-
+set "VBS=%TEMP%\kunyista_sc.vbs"
+if exist "%EXE_FILE%" (
+    (
+        echo Set ws = CreateObject^("WScript.Shell"^)
+        echo Set sc = ws.CreateShortcut^("%SHORTCUT%"^)
+        echo sc.TargetPath = "%EXE_FILE%"
+        echo sc.WorkingDirectory = "%INSTALL_DIR%"
+        echo sc.IconLocation = "%EXE_FILE%"
+        echo sc.Description = "Kunyista - Windows Optimalizalo"
+        echo sc.Save
+    ) > "%VBS%"
+) else (
+    set "PYTHONW=%PY:python.exe=pythonw.exe%"
+    (
+        echo Set ws = CreateObject^("WScript.Shell"^)
+        echo Set sc = ws.CreateShortcut^("%SHORTCUT%"^)
+        echo sc.TargetPath = "%PYTHONW%"
+        echo sc.Arguments = """%PY_FILE%"""
+        echo sc.WorkingDirectory = "%INSTALL_DIR%"
+        echo sc.IconLocation = "%ICO_FILE%"
+        echo sc.Description = "Kunyista - Windows Optimalizalo"
+        echo sc.Save
+    ) > "%VBS%"
+)
+cscript //nologo "%VBS%"
+del "%VBS%"
 if exist "%SHORTCUT%" (
     echo  [OK] Parancsikon letrehozva az asztalon.
 ) else (
-    echo  [!] Parancsikon letrehozasa nem sikerult, de a program futtatható innen:
-    echo      %PYTHON_PATH% "%DEST_FILE%"
+    echo  [!] Parancsikon letrehozasa nem sikerult.
 )
 
-:: ── Kesz ─────────────────────────────────────────────────────
 echo.
 echo  ==========================================
 echo    TELEPITES KESZ!
 echo  ==========================================
 echo.
-echo  Az alkalmazas helye: %INSTALL_DIR%
-echo  Inditas: asztalon a "%APP_NAME%" parancsikon
+echo  Inditas: asztalon a "Kunyista" parancsikon
 echo.
 pause
